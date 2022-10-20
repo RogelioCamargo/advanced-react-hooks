@@ -10,7 +10,7 @@ import {
   PokemonErrorBoundary,
 } from '../pokemon'
 
-function useAsync(asyncCallback, initialState) {
+function useAsync(initialState) {
   function asyncReducer(state, action) {
     switch (action.type) {
       case 'pending': {
@@ -35,12 +35,7 @@ function useAsync(asyncCallback, initialState) {
     ...initialState,
   })
 
-  React.useEffect(() => {
-    const promise = asyncCallback()
-    if (!promise) {
-      return
-    }
-
+  const run = React.useCallback(promise => {
     dispatch({type: 'pending'})
     promise.then(
       data => {
@@ -50,25 +45,30 @@ function useAsync(asyncCallback, initialState) {
         dispatch({type: 'rejected', error})
       },
     )
-  }, [asyncCallback])
+  }, [])
 
-  return state
+  return {...state, run}
 }
 
 function PokemonInfo({pokemonName}) {
   // 🐨 here's how you'll use the new useAsync hook you're writing:
-  const asyncCallback = React.useCallback(() => {
+  const {
+    data: pokemon,
+    status,
+    error,
+    run,
+  } = useAsync({status: pokemonName ? 'pending' : 'idle'})
+
+  React.useEffect(() => {
     if (!pokemonName) {
       return
     }
-    return fetchPokemon(pokemonName)
-  }, [pokemonName])
-
-  const state = useAsync(asyncCallback, {
-    status: pokemonName ? 'pending' : 'idle',
-  })
-
-  const {data: pokemon, status, error} = state
+    // 💰 note the absence of `await` here. We're literally passing the promise
+    // to `run` so `useAsync` can attach it's own `.then` handler on it to keep
+    // track of the state of the promise.
+    const pokemonPromise = fetchPokemon(pokemonName)
+    run(pokemonPromise)
+  }, [pokemonName, run])
 
   switch (status) {
     case 'idle':
