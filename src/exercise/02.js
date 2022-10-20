@@ -10,6 +10,25 @@ import {
   PokemonErrorBoundary,
 } from '../pokemon'
 
+function useSafeDispatch(dispatch) {
+  const mountedRef = React.useRef(false)
+
+  React.useLayoutEffect(() => {
+    mountedRef.current = true
+
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  return React.useCallback(
+    (...args) => {
+      if (mountedRef.current) dispatch(...args)
+    },
+    [dispatch],
+  )
+}
+
 function useAsync(initialState) {
   function asyncReducer(state, action) {
     switch (action.type) {
@@ -28,24 +47,29 @@ function useAsync(initialState) {
     }
   }
 
-  const [state, dispatch] = React.useReducer(asyncReducer, {
+  const [state, unsafeDispatch] = React.useReducer(asyncReducer, {
     status: 'idle',
     data: null,
     error: null,
     ...initialState,
   })
 
-  const run = React.useCallback(promise => {
-    dispatch({type: 'pending'})
-    promise.then(
-      data => {
-        dispatch({type: 'resolved', data})
-      },
-      error => {
-        dispatch({type: 'rejected', error})
-      },
-    )
-  }, [])
+  const dispatch = useSafeDispatch(unsafeDispatch)
+
+  const run = React.useCallback(
+    promise => {
+      dispatch({type: 'pending'})
+      promise.then(
+        data => {
+          dispatch({type: 'resolved', data})
+        },
+        error => {
+          dispatch({type: 'rejected', error})
+        },
+      )
+    },
+    [dispatch],
+  )
 
   return {...state, run}
 }
@@ -63,9 +87,7 @@ function PokemonInfo({pokemonName}) {
     if (!pokemonName) {
       return
     }
-    // 💰 note the absence of `await` here. We're literally passing the promise
-    // to `run` so `useAsync` can attach it's own `.then` handler on it to keep
-    // track of the state of the promise.
+
     const pokemonPromise = fetchPokemon(pokemonName)
     run(pokemonPromise)
   }, [pokemonName, run])
